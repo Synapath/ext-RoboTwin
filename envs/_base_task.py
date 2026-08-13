@@ -61,6 +61,7 @@ class Base_Task(gym.Env):
 
         self.FRAME_IDX = 0
         self.task_name = kwags.get("task_name")
+        self.task_config = kwags.get("task_config")
         self.save_dir = kwags.get("save_path", "data")
         self.ep_num = kwags.get("now_ep_num", 0)
         self.render_freq = kwags.get("render_freq", 10)
@@ -76,6 +77,13 @@ class Base_Task(gym.Env):
         self.random_background = random_setting.get("random_background", False)
         self.cluttered_table = random_setting.get("cluttered_table", False)
         self.clean_background_rate = random_setting.get("clean_background_rate", 1)
+        # Backward compatible with the official configs, which historically reused
+        # clean_background_rate as the probability of omitting all clutter.  G4 can
+        # override this field to vary clutter without coupling it to background.
+        self.cluttered_table_clean_rate = random_setting.get(
+            "cluttered_table_clean_rate", self.clean_background_rate
+        )
+        self.cluttered_numbers = random_setting.get("cluttered_numbers", 10)
         self.random_head_camera_dis = random_setting.get("random_head_camera_dis", 0)
         self.random_table_height = random_setting.get("random_table_height", 0)
         self.random_light = random_setting.get("random_light", False)
@@ -131,7 +139,7 @@ class Base_Task(gym.Env):
         self.load_actors()
 
         if self.cluttered_table:
-            self.get_cluttered_table()
+            self.get_cluttered_table(cluttered_numbers=self.cluttered_numbers)
 
         is_stable, unstable_list = self.check_stable()
         if not is_stable:
@@ -154,6 +162,36 @@ class Base_Task(gym.Env):
             "wall_texture": self.wall_texture,
             "table_texture": self.table_texture,
         }
+        self.info["domain_randomization"] = {
+            "seed": int(kwags.get("seed", 0)),
+            "configured": {
+                "random_background": bool(self.random_background),
+                "cluttered_table": bool(self.cluttered_table),
+                "clean_background_rate": float(self.clean_background_rate),
+                "cluttered_table_clean_rate": float(self.cluttered_table_clean_rate),
+                "cluttered_numbers": int(self.cluttered_numbers),
+                "random_head_camera_dis": float(self.random_head_camera_dis),
+                "random_table_height": float(self.random_table_height),
+                "random_light": bool(self.random_light),
+                "crazy_random_light_rate": float(self.crazy_random_light_rate),
+            },
+            "realized": {
+                "table_z_bias": float(self.table_z_bias),
+                "wall_texture": self.wall_texture,
+                "table_texture": self.table_texture,
+                "direction_lights": self.direction_light_samples,
+                "point_lights": self.point_light_samples,
+                "crazy_random_light": bool(self.crazy_random_light),
+                "static_cameras": self.cameras.randomization_info,
+                "cluttered_objects": self.record_cluttered_objects,
+                "robot_initial_joint_state": {
+                    "left": np.asarray(self.robot.get_left_arm_jointState(), dtype=float).tolist(),
+                    "right": np.asarray(self.robot.get_right_arm_jointState(), dtype=float).tolist(),
+                },
+            },
+        }
+        if hasattr(self, "a2b_scene_spec"):
+            self.info["a2b_scene_spec"] = self.a2b_scene_spec
         self.info["info"] = {}
 
         self.stage_success_tag = False
@@ -236,6 +274,7 @@ class Base_Task(gym.Env):
         # default spotlight angle and intensity
         direction_lights = kwargs.get("direction_lights", [[[0, 0.5, -1], [0.5, 0.5, 0.5]]])
         self.direction_light_lst = []
+        self.direction_light_samples = []
         for direction_light in direction_lights:
             if self.random_light:
                 direction_light[1] = [
@@ -243,14 +282,23 @@ class Base_Task(gym.Env):
                     np.random.rand(),
                     np.random.rand(),
                 ]
+            self.direction_light_samples.append({
+                "direction": np.asarray(direction_light[0], dtype=float).tolist(),
+                "color": np.asarray(direction_light[1], dtype=float).tolist(),
+            })
             self.direction_light_lst.append(
                 self.scene.add_directional_light(direction_light[0], direction_light[1], shadow=shadow))
         # default point lights position and intensity
         point_lights = kwargs.get("point_lights", [[[1, 0, 1.8], [1, 1, 1]], [[-1, 0, 1.8], [1, 1, 1]]])
         self.point_light_lst = []
+        self.point_light_samples = []
         for point_light in point_lights:
             if self.random_light:
                 point_light[1] = [np.random.rand(), np.random.rand(), np.random.rand()]
+            self.point_light_samples.append({
+                "position": np.asarray(point_light[0], dtype=float).tolist(),
+                "color": np.asarray(point_light[1], dtype=float).tolist(),
+            })
             self.point_light_lst.append(self.scene.add_point_light(point_light[0], point_light[1], shadow=shadow))
 
         # initialize viewer with camera position and orientation
@@ -317,12 +365,16 @@ class Base_Task(gym.Env):
     def get_cluttered_table(self, cluttered_numbers=10, xlim=[-0.59, 0.59], ylim=[-0.34, 0.34], zlim=[0.741]):
         self.record_cluttered_objects = []  # record cluttered objects
 
+        # Avoid mutating function-default lists across episodes.
+        xlim = list(xlim)
+        ylim = list(ylim)
+
         xlim[0] += self.table_xy_bias[0]
         xlim[1] += self.table_xy_bias[0]
         ylim[0] += self.table_xy_bias[1]
         ylim[1] += self.table_xy_bias[1]
 
-        if np.random.rand() < self.clean_background_rate:
+        if np.random.rand() < self.cluttered_table_clean_rate:
             return
 
         task_objects_list = []
@@ -373,7 +425,12 @@ class Base_Task(gym.Env):
             pose.append(obj_radius)
             self.size_dict.append(pose)
             success_count += 1
-            self.record_cluttered_objects.append({"object_type": obj_name, "object_index": obj_idx})
+            self.record_cluttered_objects.append({
+                "object_type": obj_name,
+                "object_index": int(obj_idx),
+                "pose": self.cluttered_obj.get_pose().p.tolist(),
+                "radius": float(obj_radius),
+            })
 
         if success_count < cluttered_numbers:
             print(f"Warning: Only {success_count} cluttered objects are placed on the table.")

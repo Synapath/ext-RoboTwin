@@ -50,6 +50,7 @@ class Camera:
         self.pcd_crop_bbox[0][2] += bias
         self.table_z_bias = bias
         self.random_head_camera_dis = random_head_camera_dis
+        self.randomization_info = {}
 
         self.static_camera_config = []
         self.head_camera_type = kwags["camera"].get("head_camera_type", "D435")
@@ -94,10 +95,11 @@ class Camera:
                 raise ValueError(f"Camera type {camera_info['type']} not supported")
 
             camera_config = camera_args[camera_info["type"]]
-            cam_pos = np.array(camera_info["position"])
+            base_cam_pos = np.array(camera_info["position"], dtype=float)
             vector = np.random.randn(3)
             random_dir = vector / np.linalg.norm(vector)
-            cam_pos = cam_pos + random_dir * np.random.uniform(low=0, high=random_head_camera_dis)
+            displacement = random_dir * np.random.uniform(low=0, high=random_head_camera_dis)
+            cam_pos = base_cam_pos + displacement
             cam_forward = np.array(camera_info["forward"]) / np.linalg.norm(np.array(camera_info["forward"]))
             cam_left = np.array(camera_info["left"]) / np.linalg.norm(np.array(camera_info["left"]))
             up = np.cross(cam_forward, cam_left)
@@ -118,6 +120,17 @@ class Camera:
                 far=far,
             )
             camera.entity.set_pose(sapien.Pose(mat44))
+            self.randomization_info[camera_info["name"]] = {
+                "type": camera_info["type"],
+                "base_position": base_cam_pos.tolist(),
+                "displacement": displacement.tolist(),
+                "position": cam_pos.tolist(),
+                "forward": cam_forward.tolist(),
+                "left": cam_left.tolist(),
+                "width": int(camera_config["w"]),
+                "height": int(camera_config["h"]),
+                "fovy_degrees": float(camera_config["fovy"]),
+            }
 
             # ========================= sensor camera =========================
             # sensor_camera = StereoDepthSensor(

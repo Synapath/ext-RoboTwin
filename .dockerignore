@@ -1,0 +1,13 @@
+.git
+XPolicyLab
+assets
+data
+envs/curobo/.git
+envs/curobo/.github
+envs/curobo/benchmark
+envs/curobo/docker
+envs/curobo/examples
+envs/curobo/images
+envs/curobo/tests
+**/__pycache__
+**/*.pyc

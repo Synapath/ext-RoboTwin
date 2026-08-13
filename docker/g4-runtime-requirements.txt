@@ -1,0 +1,30 @@
+# G4 simulator-only environment. Torch/torchvision/numpy/open3d/opencv/trimesh
+# are inherited from the pinned Blackwell base and verified after build.
+transforms3d==0.4.2
+sapien==3.0.0b1
+scipy==1.10.1
+mplib==0.2.1
+gymnasium==0.29.1
+imageio==2.34.2
+pydantic>=2.5,<3
+PyYAML>=6,<7
+zarr<3
+huggingface_hub==0.25.0
+h5py>=3.8,<4
+websockets>=13,<14
+msgpack>=1.0.8,<2
+msgpack-numpy>=0.4.8,<1
+rich>=13.7,<14
+pyglet<2
+moviepy<2
+termcolor<3
+av<14
+matplotlib<4
+ffmpeg<2
+toppra==0.6.3
+yourdfpy>=0.0.53,<1
+numpy-quaternion<2025
+pybind11<3
+networkx<4
+scikit-image<1
+importlib-resources<7
