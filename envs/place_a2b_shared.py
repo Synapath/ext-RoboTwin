@@ -51,20 +51,20 @@ class PlaceA2BSharedTask(Base_Task):
         super()._init_task_env_(**kwargs)
 
     def load_actors(self):
-        # The target stays near the table center so both +/- 13 cm endpoints are
-        # feasible.  The source is separated in y and from both possible endpoints,
-        # making the same initial scene valid for either language goal.
+        # Both arms must be able to grasp the same source scene.  Separating source
+        # and target along y avoids turning one language branch into a cross-body
+        # reach while preserving identical initial visual evidence.
         for _ in range(100):
             source_pose = rand_pose(
-                xlim=[-0.22, 0.22],
-                ylim=[-0.2, 0.0],
+                xlim=[-0.04, 0.04],
+                ylim=[-0.22, -0.15],
                 qpos=[0.5, 0.5, 0.5, 0.5],
                 rotate_rand=True,
                 rotate_lim=[0, 3.14, 0],
             )
             target_pose = rand_pose(
-                xlim=[-0.06, 0.06],
-                ylim=[-0.2, 0.0],
+                xlim=[-0.02, 0.02],
+                ylim=[-0.04, 0.03],
                 qpos=[0.5, 0.5, 0.5, 0.5],
                 rotate_rand=True,
                 rotate_lim=[0, 3.14, 0],
@@ -74,8 +74,8 @@ class PlaceA2BSharedTask(Base_Task):
             left_goal = target_xy + np.array([-self.goal_offset_x, 0.0])
             right_goal = target_xy + np.array([self.goal_offset_x, 0.0])
             if (
-                abs(source_xy[1] - target_xy[1]) >= 0.1
-                and np.linalg.norm(source_xy - target_xy) >= 0.19
+                abs(source_xy[1] - target_xy[1]) >= 0.12
+                and np.linalg.norm(source_xy - target_xy) >= 0.12
                 and np.linalg.norm(source_xy - left_goal) >= 0.1
                 and np.linalg.norm(source_xy - right_goal) >= 0.1
             ):
@@ -118,6 +118,7 @@ class PlaceA2BSharedTask(Base_Task):
         self.a2b_scene_spec = {
             "schema_version": "g4-a2b-shared-scene-v1",
             "goal_offset_x": self.goal_offset_x,
+            "expert_arm_assignment": "goal-conditioned",
             "source": {
                 "model_name": self.selected_modelname_A,
                 "model_id": self.selected_model_id_A,
@@ -131,7 +132,7 @@ class PlaceA2BSharedTask(Base_Task):
         }
 
     def play_once(self):
-        arm_tag = ArmTag("right" if self.object.get_pose().p[0] > 0 else "left")
+        arm_tag = ArmTag(self.goal_direction)
         self.move(self.grasp_actor(self.object, arm_tag=arm_tag, pre_grasp_dis=0.1))
         self.move(self.move_by_displacement(arm_tag=arm_tag, z=0.1, move_axis="arm"))
 
