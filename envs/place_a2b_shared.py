@@ -43,6 +43,7 @@ class PlaceA2BSharedTask(Base_Task):
     """Left/right language goals over an identical, seed-addressed initial scene."""
 
     goal_direction = None
+    goal_offset_x = 0.10
 
     def setup_demo(self, **kwargs):
         if self.goal_direction not in {"left", "right"}:
@@ -70,8 +71,8 @@ class PlaceA2BSharedTask(Base_Task):
             )
             source_xy = source_pose.p[:2]
             target_xy = target_pose.p[:2]
-            left_goal = target_xy + np.array([-0.13, 0.0])
-            right_goal = target_xy + np.array([0.13, 0.0])
+            left_goal = target_xy + np.array([-self.goal_offset_x, 0.0])
+            right_goal = target_xy + np.array([self.goal_offset_x, 0.0])
             if (
                 abs(source_xy[1] - target_xy[1]) >= 0.1
                 and np.linalg.norm(source_xy - target_xy) >= 0.19
@@ -116,6 +117,7 @@ class PlaceA2BSharedTask(Base_Task):
 
         self.a2b_scene_spec = {
             "schema_version": "g4-a2b-shared-scene-v1",
+            "goal_offset_x": self.goal_offset_x,
             "source": {
                 "model_name": self.selected_modelname_A,
                 "model_id": self.selected_model_id_A,
@@ -134,7 +136,8 @@ class PlaceA2BSharedTask(Base_Task):
         self.move(self.move_by_displacement(arm_tag=arm_tag, z=0.1, move_axis="arm"))
 
         target_pose = self.target_object.get_pose().p.tolist()
-        target_pose[0] += -0.13 if self.goal_direction == "left" else 0.13
+        target_delta_x = -self.goal_offset_x if self.goal_direction == "left" else self.goal_offset_x
+        target_pose[0] += target_delta_x
         self.move(self.place_actor(self.object, arm_tag=arm_tag, target_pose=target_pose))
 
         self.info["pair_id"] = (
